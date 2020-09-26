@@ -2,7 +2,7 @@ from scipy.special import betainc
 import random
 
 
-def random_attraction_curve(attractiveness, curve_width=4, attractiveness_shift=1.5, shift_noise=1.5):
+def random_attraction_curve(attractiveness, curve_width=4, attractiveness_shift=1.25, shift_noise=1.25):
     if attractiveness_shift >= curve_width:
         raise ValueError('Cannot have curve shift >= curve width')
 
@@ -19,9 +19,11 @@ def shift_attraction_curve(curve, shift):
     return betainc_attraction_curve(new_a, new_b)
 
 
-def shift_betainc_params(a, b, shift, floor_a=0.01):
+def shift_betainc_params(a, b, shift, floor_val=0.1):
     if a + shift < 0:
-        shift = floor_a - a
+        shift = floor_val - a
+    if b - shift < 0:
+        shift = b - floor_val
     return a + shift, b - shift
 
 
