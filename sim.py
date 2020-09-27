@@ -1,4 +1,4 @@
-from random import random, shuffle, betavariate, randrange, sample
+from random import random, shuffle, betavariate, sample
 from curve import random_attraction_curve, shift_attraction_curve
 from functools import partial
 
@@ -87,20 +87,13 @@ class Simulation:
 
         self.male_pool = init_pool(n_males, 'm', attraction_curve, attractiveness_func)
         self.female_pool = init_pool(n_females, 'f', attraction_curve, attractiveness_func)
-        for male, female in zip(self.male_pool, self.female_pool):
+        for male in self.male_pool:
             male.init_candidates(self.female_pool)
+        for female in self.female_pool:
             female.init_candidates(self.male_pool)
 
         self.matches = []
         self.cycle_factor = cycle_factor
-
-    def determine_match(self, male, female):
-        if male.is_attracted_to(female) and female.is_attracted_to(male):
-            self.matches.append(Match(male, female, self.cycle))
-            self.male_pool.remove(male)
-            self.female_pool.remove(female)
-            return True
-        return False
 
     def recalc_attraction_curve(self, person):
         person.attraction_curve = shift_attraction_curve(person.attraction_curve, shift=-self.cycle_factor)
@@ -145,6 +138,7 @@ class TinderSimulation(Simulation):
         for female in self.female_pool:
             selected_male = female.evaluate_choices()
             if selected_male is not None:
+                # male *must* be removed from pool here so he doesn't match up with other females
                 self.remove_from_pool(selected_male)
                 self.matches.append(Match(selected_male, female, self.cycle))
                 people_to_remove.append(female)
