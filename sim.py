@@ -1,25 +1,54 @@
-from random import random, shuffle, betavariate
+from random import random, shuffle, betavariate, randrange, sample
 from curve import random_attraction_curve, shift_attraction_curve
 from functools import partial
 
 
 class Person:
-    @classmethod
-    def random(cls, index, sex, attraction_curve=None):
-        attractiveness = random()
-        if not attraction_curve:
-            attraction_curve = random_attraction_curve(attractiveness)
-        return Person(index, sex, attractiveness=attractiveness, attraction_curve=attraction_curve)
-
     def __init__(self, index, sex, attractiveness, attraction_curve):
         self.index = index
         self.sex = sex
         self.attractiveness = attractiveness
         self.attraction_curve = attraction_curve
+        self.choices = []
+        self.candidates = set()
+
+    def init_candidates(self, people):
+        self.candidates = set(people)
+
+    def select_candidates(self, n, test_attraction=True):
+        selection = sample(self.candidates, min(n, len(self.candidates)))
+        if not test_attraction:
+            return selection
+        return [p for p in selection if self.is_attracted_to(p)]
+
+    def remove_candidate(self, person):
+        if person in self.candidates:
+            self.candidates.remove(person)
+
+    def add_choice(self, person):
+        self.choices.append(person)
+
+    def evaluate_choices(self):
+        selected_person = None
+        for person in self.choices:
+            if person in self.candidates:
+                self.remove_candidate(person)
+                person.remove_candidate(self)
+                if self.is_attracted_to(person):
+                    selected_person = person
+                    break
+        self.choices = []
+        return selected_person
 
     def is_attracted_to(self, other_person):
         p_attraction = self.attraction_curve(other_person.attractiveness)
         return random() < p_attraction
+
+    def __hash__(self):
+        return hash((self.index, self.sex))
+
+    def __eq__(self, other):
+        return self.index == other.index and self.sex == other.sex
 
     def __str__(self):
         return f'<Person index: {self.index} sex: {self.sex}, attractiveness: {self.attractiveness}>'
@@ -58,6 +87,10 @@ class Simulation:
 
         self.male_pool = init_pool(n_males, 'm', attraction_curve, attractiveness_func)
         self.female_pool = init_pool(n_females, 'f', attraction_curve, attractiveness_func)
+        for male, female in zip(self.male_pool, self.female_pool):
+            male.init_candidates(self.female_pool)
+            female.init_candidates(self.male_pool)
+
         self.matches = []
         self.cycle_factor = cycle_factor
 
@@ -72,16 +105,49 @@ class Simulation:
     def recalc_attraction_curve(self, person):
         person.attraction_curve = shift_attraction_curve(person.attraction_curve, shift=-self.cycle_factor)
 
+    def remove_from_pool(self, person):
+        if person.sex == 'm':
+            self.male_pool.remove(person)
+            for female in self.female_pool:
+                female.remove_candidate(person)
+        else:
+            self.female_pool.remove(person)
+            for male in self.male_pool:
+                male.remove_candidate(person)
+
     def step(self):
-        for male, female in zip(self.male_pool, self.female_pool):
-            matched = self.determine_match(male, female)
-            if not matched:
-                self.recalc_attraction_curve(male)
-                self.recalc_attraction_curve(female)
+        raise NotImplementedError
+
+    def poststep(self):
         self.cycle += 1
+        for male in self.male_pool:
+            self.recalc_attraction_curve(male)
+        for female in self.female_pool:
+            self.recalc_attraction_curve(female)
         shuffle(self.male_pool)
         shuffle(self.female_pool)
 
     def run(self, steps):
         for _ in range(steps):
             self.step()
+            self.poststep()
+
+
+class TinderSimulation(Simulation):
+    def step(self):
+        people_to_remove = []
+
+        for male in self.male_pool:
+            choices = male.select_candidates(10)
+            for female in choices:
+                female.add_choice(male)
+
+        for female in self.female_pool:
+            selected_male = female.evaluate_choices()
+            if selected_male is not None:
+                self.remove_from_pool(selected_male)
+                self.matches.append(Match(selected_male, female, self.cycle))
+                people_to_remove.append(female)
+
+        for person in people_to_remove:
+            self.remove_from_pool(person)
