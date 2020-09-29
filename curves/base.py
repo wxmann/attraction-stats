@@ -1,16 +1,4 @@
 from scipy.special import betainc
-import random
-
-
-def random_attraction_curve(attractiveness, curve_width=4, attractiveness_shift=1.25, shift_noise=1.25):
-    if attractiveness_shift >= curve_width:
-        raise ValueError('Cannot have curve shift >= curve width')
-
-    shift = attractiveness_shift * (attractiveness - 0.5) / 0.5
-    noise = random.gauss(mu=0, sigma=shift_noise)
-    a, b = shift_betainc_params(curve_width, curve_width, shift + noise)
-
-    return betainc_attraction_curve(a, b)
 
 
 def shift_attraction_curve(curve, shift):

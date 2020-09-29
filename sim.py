@@ -1,14 +1,16 @@
 from random import random, shuffle, betavariate, sample
-from curve import random_attraction_curve, shift_attraction_curve
 from functools import partial
+
+from curves import generators, evolvers
 
 
 class Person:
-    def __init__(self, index, sex, attractiveness, attraction_curve):
+    def __init__(self, index, sex, attractiveness, attraction_curve, curve_evolver):
         self.index = index
         self.sex = sex
         self.attractiveness = attractiveness
         self.attraction_curve = attraction_curve
+        self.curve_evolver = curve_evolver
         self.choices = []
         self.candidates = set()
 
@@ -44,6 +46,10 @@ class Person:
         p_attraction = self.attraction_curve(other_person.attractiveness)
         return random() < p_attraction
 
+    def update_attraction_curve(self, sim):
+        self.attraction_curve = self.curve_evolver(self, sim)
+        # print(f'person: {str(self)}, cycle: {sim.cycle}, curve: {str(self.attraction_curve)})
+
     def __hash__(self):
         return hash((self.index, self.sex))
 
@@ -64,39 +70,58 @@ class Match:
         return f'{self.male} matches with {self.female} at cycle {self.cycle}'
 
 
-def init_pool(n, sex, attraction_curve, attractiveness_func):
+def init_pool(n, sex, attractiveness_dist, curve_generator, curve_evolver):
     ppl = []
-    if attraction_curve is None:
-        attraction_curve = random_attraction_curve
     for i in range(n):
-        attractiveness = attractiveness_func()
-        attraction_curve_result = attraction_curve(attractiveness)
-        new_person = Person(i, sex, attractiveness=attractiveness, attraction_curve=attraction_curve_result)
+        attractiveness = attractiveness_dist()
+        # print('attractiveness ' + str(attractiveness))
+        attraction_curve_result = curve_generator(attractiveness)
+        # print('attraction curve result ' + str(attraction_curve_result))
+        new_person = Person(i, sex, attractiveness=attractiveness,
+                            attraction_curve=attraction_curve_result, curve_evolver=curve_evolver)
         ppl.append(new_person)
     return ppl
 
 
 class Simulation:
-    def __init__(self, n_males, n_females, cycle_factor=0.02, attraction_curve=None, attractiveness_dist='normal'):
+    def __init__(self, n_males, n_females, male_params=None, female_params=None):
         self.cycle = 0
-        if attractiveness_dist == 'normal':
-            # beta distribution at alpha=4 and beta=4 is roughly normal and constrained to [0, 1]
-            attractiveness_func = partial(betavariate, alpha=4, beta=4)
-        else:
-            attractiveness_func = random
 
-        self.male_pool = init_pool(n_males, 'm', attraction_curve, attractiveness_func)
-        self.female_pool = init_pool(n_females, 'f', attraction_curve, attractiveness_func)
+        if male_params is None:
+            male_params = Simulation.default_params()
+        if female_params is None:
+            female_params = Simulation.default_params()
+
+        self.male_pool = init_pool(n_males, 'm', **male_params)
+        self.female_pool = init_pool(n_females, 'f', **female_params)
+
         for male in self.male_pool:
             male.init_candidates(self.female_pool)
         for female in self.female_pool:
             female.init_candidates(self.male_pool)
 
         self.matches = []
-        self.cycle_factor = cycle_factor
 
-    def recalc_attraction_curve(self, person):
-        person.attraction_curve = shift_attraction_curve(person.attraction_curve, shift=-self.cycle_factor)
+    @staticmethod
+    def default_params(attractiveness_dist='normal', curve_generator=None, curve_evolver=None):
+        if attractiveness_dist == 'normal':
+            # beta distribution at alpha=4 and beta=4 is roughly normal and constrained to [0, 1]
+            attractiveness_dist = partial(betavariate, alpha=4, beta=4)
+        else:
+            attractiveness_dist = random
+
+        if curve_generator is None:
+            curve_generator = generators.attractiveness_dependent(starting_width=4, shift_factor=1.25,
+                                                                  shift_noise=1.25)
+
+        if curve_evolver is None:
+            curve_evolver = evolvers.cycle_decreasing(decrement=0.02)
+
+        return {
+            'attractiveness_dist': attractiveness_dist,
+            'curve_generator': curve_generator,
+            'curve_evolver': curve_evolver
+        }
 
     def remove_from_pool(self, person):
         if person.sex == 'm':
@@ -114,9 +139,9 @@ class Simulation:
     def poststep(self):
         self.cycle += 1
         for male in self.male_pool:
-            self.recalc_attraction_curve(male)
+            male.update_attraction_curve(self)
         for female in self.female_pool:
-            self.recalc_attraction_curve(female)
+            female.update_attraction_curve(self)
         shuffle(self.male_pool)
         shuffle(self.female_pool)
 
