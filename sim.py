@@ -107,8 +107,6 @@ class Simulation:
         if attractiveness_dist == 'normal':
             # beta distribution at alpha=4 and beta=4 is roughly normal and constrained to [0, 1]
             attractiveness_dist = partial(betavariate, alpha=4, beta=4)
-        else:
-            attractiveness_dist = random
 
         if curve_generator is None:
             curve_generator = generators.attractiveness_dependent(starting_width=4, shift_factor=1.25,
